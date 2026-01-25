@@ -7,6 +7,7 @@ const supabase = createClient(
 );
 
 const TABLE = "securemov";
+console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
 
 export default function App() {
   const [nome, setNome] = useState(localStorage.getItem("nome_utente") || "");
