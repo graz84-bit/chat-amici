@@ -1,3 +1,14 @@
+import { useEffect, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+const TABLE = "securemov";
+const JOIN_CODE = import.meta.env.VITE_JOIN_CODE || "";
+
 export default function App() {
   const [nome, setNome] = useState(localStorage.getItem("username") || "");
   const [codice, setCodice] = useState(localStorage.getItem("join_code") || "");
@@ -21,6 +32,11 @@ export default function App() {
     localStorage.setItem("join_code", c);
     localStorage.setItem("autorizzato", "1");
     setAutorizzato(true);
+  }
+
+  function esci() {
+    localStorage.removeItem("autorizzato");
+    setAutorizzato(false);
   }
 
   async function carica() {
@@ -57,7 +73,7 @@ export default function App() {
     }
 
     setTesto("");
-    await carica(); // fallback: aggiorna subito la chat
+    await carica(); // fallback: aggiorna subito anche se realtime ritarda
   }
 
   useEffect(() => {
@@ -74,14 +90,9 @@ export default function App() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: TABLE },
-        (payload) => {
-          console.log("Realtime INSERT payload:", payload);
-          setMsgs((prev) => [...prev, payload.new]);
-        }
+        (payload) => setMsgs((prev) => [...prev, payload.new])
       )
-      .subscribe((status) => {
-        console.log("Realtime status:", status);
-      });
+      .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, [autorizzato]);
@@ -89,42 +100,44 @@ export default function App() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
-  
-  if (!autorizzato) {
-  return (
-    <div style={styles.page}>
-      <div style={{ ...styles.card, height: "auto" }}>
-        <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
-          <div style={styles.title}>Chat amici</div>
-          <div style={styles.sub}>Inserisci nome e codice per entrare</div>
-        </div>
 
-        <div style={{ padding: 16, display: "grid", gap: 10 }}>
-          <input
-            style={styles.input}
-            placeholder="Il tuo nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
-          <input
-            style={styles.input}
-            placeholder="Codice chat"
-            value={codice}
-            onChange={(e) => setCodice(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && entra()}
-          />
-          <button style={styles.btn} onClick={entra}>
-            Entra
-          </button>
-          <div style={{ fontSize: 12, opacity: 0.6 }}>
-            (È un accesso semplice per amici.)
+  // SCHERMATA INGRESSO (dashboard semplice)
+  if (!autorizzato) {
+    return (
+      <div style={styles.page}>
+        <div style={{ ...styles.card, height: "auto" }}>
+          <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
+            <div style={styles.title}>Chat amici</div>
+            <div style={styles.sub}>Inserisci nome e codice per entrare</div>
+          </div>
+
+          <div style={{ padding: 16, display: "grid", gap: 10 }}>
+            <input
+              style={styles.input}
+              placeholder="Il tuo nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+            />
+            <input
+              style={styles.input}
+              placeholder="Codice chat"
+              value={codice}
+              onChange={(e) => setCodice(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && entra()}
+            />
+            <button style={styles.btn} onClick={entra}>
+              Entra
+            </button>
+            <div style={{ fontSize: 12, opacity: 0.6 }}>
+              (Accesso semplice per amici. Non è un login.)
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
+  // CHAT
   return (
     <div style={styles.page}>
       <div style={styles.card}>
@@ -133,12 +146,18 @@ export default function App() {
             <div style={styles.title}>Chat amici</div>
             <div style={styles.sub}>Supabase realtime</div>
           </div>
-          <input
-            style={styles.name}
-            placeholder="Il tuo nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              style={styles.name}
+              placeholder="Il tuo nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+            />
+            <button style={styles.btn} onClick={esci}>
+              Esci
+            </button>
+          </div>
         </div>
 
         <div style={styles.chat}>
