@@ -55,13 +55,19 @@ export default function App() {
     carica();
 
     const channel = supabase
-      .channel("chat-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: TABLE },
-        (payload) => setMsgs((prev) => [...prev, payload.new])
-      )
-      .subscribe();
+  .channel("chat-realtime")
+  .on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: TABLE },
+    (payload) => {
+      console.log("Realtime INSERT payload:", payload);
+      setMsgs((prev) => [...prev, payload.new]);
+    }
+  )
+  .subscribe((status) => {
+    console.log("Realtime status:", status);
+  });
+
 
     return () => supabase.removeChannel(channel);
   }, []);
