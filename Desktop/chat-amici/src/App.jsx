@@ -11,7 +11,7 @@ console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
 console.log("TABLE =", TABLE);
 
 export default function App() {
-  const [nome, setNome] = useState(localStorage.getItem("nome_utente") || "");
+  const [nome, setNome] = useState(localStorage.getItem("username") || "");
   const [testo, setTesto] = useState("");
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
@@ -19,7 +19,7 @@ export default function App() {
   async function carica() {
     const { data, error } = await supabase
       .from(TABLE)
-      .select("id, created_at, testo, nome_utente")
+      .select("id, created_at, testo, username")
       .order("created_at", { ascending: true })
       .limit(200);
 
@@ -38,7 +38,7 @@ export default function App() {
     if (!t) return;
 
     const { error } = await supabase.from(TABLE).insert({
-      nome_utente: n,
+      username: n,
       testo: t,
     });
 
@@ -67,7 +67,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("nome_utente", nome);
+    localStorage.setItem("username", nome);
   }, [nome]);
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export default function App() {
         <div style={styles.chat}>
           {msgs.map((m) => {
             const mine =
-              (m.nome_utente || "").toLowerCase() === nome.trim().toLowerCase();
+              (m.username || "").toLowerCase() === nome.trim().toLowerCase();
             return (
               <div
                 key={m.id}
@@ -110,7 +110,7 @@ export default function App() {
                   }}
                 >
                   <div style={styles.meta}>
-                    <b>{m.nome_utente || "?"}</b>
+                    <b>{m.username || "?"}</b>
                     <span style={styles.time}>
                       {m.created_at
                         ? new Date(m.created_at).toLocaleTimeString()
