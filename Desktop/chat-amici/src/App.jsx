@@ -1,20 +1,27 @@
-import { useEffect, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
-const TABLE = "securemov";
-console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
-console.log("TABLE =", TABLE);
-
 export default function App() {
   const [nome, setNome] = useState(localStorage.getItem("username") || "");
+  const [codice, setCodice] = useState(localStorage.getItem("join_code") || "");
+  const [autorizzato, setAutorizzato] = useState(
+    localStorage.getItem("autorizzato") === "1"
+  );
+
   const [testo, setTesto] = useState("");
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
+
+  function entra() {
+    const n = nome.trim();
+    const c = codice.trim();
+
+    if (n.length < 2) return alert("Inserisci il tuo nome (min 2 lettere).");
+    if (!c) return alert("Inserisci il codice chat.");
+    if (JOIN_CODE && c !== JOIN_CODE) return alert("Codice errato.");
+
+    localStorage.setItem("username", n);
+    localStorage.setItem("join_code", c);
+    localStorage.setItem("autorizzato", "1");
+    setAutorizzato(true);
+  }
 
   async function carica() {
     const { data, error } = await supabase
@@ -34,6 +41,7 @@ export default function App() {
   async function invia() {
     const n = nome.trim();
     const t = testo.trim();
+
     if (n.length < 2) return alert("Inserisci il tuo nome (min 2 lettere).");
     if (!t) return;
 
@@ -49,36 +57,73 @@ export default function App() {
     }
 
     setTesto("");
+    await carica(); // fallback: aggiorna subito la chat
   }
-
-  useEffect(() => {
-    carica();
-
-    const channel = supabase
-  .channel("chat-realtime")
-  .on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: TABLE },
-    (payload) => {
-      console.log("Realtime INSERT payload:", payload);
-      setMsgs((prev) => [...prev, payload.new]);
-    }
-  )
-  .subscribe((status) => {
-    console.log("Realtime status:", status);
-  });
-
-
-    return () => supabase.removeChannel(channel);
-  }, []);
 
   useEffect(() => {
     localStorage.setItem("username", nome);
   }, [nome]);
 
   useEffect(() => {
+    if (!autorizzato) return;
+
+    carica();
+
+    const channel = supabase
+      .channel("chat-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: TABLE },
+        (payload) => {
+          console.log("Realtime INSERT payload:", payload);
+          setMsgs((prev) => [...prev, payload.new]);
+        }
+      )
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+      });
+
+    return () => supabase.removeChannel(channel);
+  }, [autorizzato]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
+  
+  if (!autorizzato) {
+  return (
+    <div style={styles.page}>
+      <div style={{ ...styles.card, height: "auto" }}>
+        <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
+          <div style={styles.title}>Chat amici</div>
+          <div style={styles.sub}>Inserisci nome e codice per entrare</div>
+        </div>
+
+        <div style={{ padding: 16, display: "grid", gap: 10 }}>
+          <input
+            style={styles.input}
+            placeholder="Il tuo nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+          />
+          <input
+            style={styles.input}
+            placeholder="Codice chat"
+            value={codice}
+            onChange={(e) => setCodice(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && entra()}
+          />
+          <button style={styles.btn} onClick={entra}>
+            Entra
+          </button>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>
+            (È un accesso semplice per amici.)
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div style={styles.page}>
