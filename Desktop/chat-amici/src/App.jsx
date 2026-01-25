@@ -19,8 +19,8 @@ export default function App() {
   async function carica() {
     const { data, error } = await supabase
       .from(TABLE)
-      .select("id, creato_a, testo, nome_utente")
-      .order("creato_a", { ascending: true })
+      .select("id, creato_at, testo, nome_utente")
+      .order("creato_at", { ascending: true })
       .limit(200);
 
     if (error) {
@@ -113,7 +113,7 @@ export default function App() {
                     <b>{m.nome_utente || "?"}</b>
                     <span style={styles.time}>
                       {m.creato_a
-                        ? new Date(m.creato_a).toLocaleTimeString()
+                        ? new Date(m.creato_at).toLocaleTimeString()
                         : ""}
                     </span>
                   </div>
