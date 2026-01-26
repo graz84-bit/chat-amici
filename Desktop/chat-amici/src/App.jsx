@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -19,6 +19,10 @@ export default function App() {
   const [testo, setTesto] = useState("");
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
+  const listRef = useRef(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+
+  const CHAT_TITLE = "SecureMov Chat";
 
   function entra() {
     const n = nome.trim();
@@ -77,6 +81,10 @@ export default function App() {
   }
 
   useEffect(() => {
+    document.title = CHAT_TITLE; // solo grafica/branding (tab browser)
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("username", nome);
   }, [nome]);
 
@@ -97,38 +105,69 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [autorizzato]);
 
+  // scroll intelligente: scende solo se sei "vicino al fondo"
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs.length]);
+    if (isNearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs.length, isNearBottom]);
 
-  // SCHERMATA INGRESSO (dashboard semplice)
+  function handleScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    const threshold = 90; // px
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    setIsNearBottom(near);
+  }
+
+  const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
+
+  function fmtTime(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+
+  // SCHERMATA INGRESSO
   if (!autorizzato) {
     return (
       <div style={styles.page}>
-        <div style={{ ...styles.card, height: "auto" }}>
-          <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
-            <div style={styles.title}>Chat amici</div>
-            <div style={styles.sub}>Inserisci nome e codice per entrare</div>
+        <div style={styles.loginWrap}>
+          <div style={styles.loginHeader}>
+            <div>
+              <div style={styles.hTitle}>{CHAT_TITLE}</div>
+              <div style={styles.hSub}>Inserisci nome e codice per entrare</div>
+            </div>
           </div>
 
-          <div style={{ padding: 16, display: "grid", gap: 10 }}>
-            <input
-              style={styles.input}
-              placeholder="Il tuo nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-            />
-            <input
-              style={styles.input}
-              placeholder="Codice chat"
-              value={codice}
-              onChange={(e) => setCodice(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && entra()}
-            />
-            <button style={styles.btn} onClick={entra}>
+          <div style={styles.loginBody}>
+            <div style={styles.field}>
+              <label style={styles.label}>Nome</label>
+              <input
+                style={styles.input}
+                placeholder="Il tuo nome"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+              />
+            </div>
+
+            <div style={styles.field}>
+              <label style={styles.label}>Codice chat</label>
+              <input
+                style={styles.input}
+                placeholder="Codice chat"
+                value={codice}
+                onChange={(e) => setCodice(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && entra()}
+              />
+            </div>
+
+            <button style={styles.primaryBtn} onClick={entra}>
               Entra
             </button>
-            <div style={{ fontSize: 12, opacity: 0.6 }}>
+
+            <div style={styles.helper}>
               (Accesso semplice per amici. Non è un login.)
             </div>
           </div>
@@ -140,73 +179,83 @@ export default function App() {
   // CHAT
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.header}>
-          <div>
-            <div style={styles.title}>Chat amici</div>
-            <div style={styles.sub}>Supabase realtime</div>
-          </div>
+      <div style={styles.header}>
+        <div>
+          <div style={styles.hTitle}>{CHAT_TITLE}</div>
+          <div style={styles.hSub}>{msgs.length} messaggi</div>
+        </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={styles.headerRight}>
+          <div style={styles.meWrap}>
+            <span style={styles.meLabel}>Tu:</span>
             <input
-              style={styles.name}
+              style={styles.meInput}
               placeholder="Il tuo nome"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
             />
-            <button style={styles.btn} onClick={esci}>
-              Esci
-            </button>
           </div>
+          <button style={styles.ghostBtn} onClick={esci}>
+            Esci
+          </button>
         </div>
+      </div>
 
-        <div style={styles.chat}>
+      <div style={styles.messagesWrap}>
+        <div ref={listRef} onScroll={handleScroll} style={styles.messages}>
           {msgs.map((m) => {
-            const mine =
-              (m.username || "").toLowerCase() === nome.trim().toLowerCase();
+            const mine = (m.username || "").trim().toLowerCase() === myName;
             return (
               <div
-                key={m.id}
+                key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
                 style={{
-                  display: "flex",
+                  ...styles.row,
                   justifyContent: mine ? "flex-end" : "flex-start",
-                  marginBottom: 10,
                 }}
               >
                 <div
                   style={{
                     ...styles.bubble,
-                    background: mine ? "#e9f5ff" : "white",
+                    ...(mine ? styles.bubbleMine : styles.bubbleOther),
                   }}
                 >
-                  <div style={styles.meta}>
-                    <b>{m.username || "?"}</b>
-                    <span style={styles.time}>
-                      {m.created_at
-                        ? new Date(m.created_at).toLocaleTimeString()
-                        : ""}
-                    </span>
-                  </div>
-                  <div>{m.testo}</div>
+                  {!mine && (
+                    <div style={styles.username}>{m.username || "?"}</div>
+                  )}
+                  <div style={styles.text}>{m.testo}</div>
+                  <div style={styles.meta}>{fmtTime(m.created_at)}</div>
                 </div>
               </div>
             );
           })}
           <div ref={bottomRef} />
         </div>
+      </div>
 
-        <div style={styles.footer}>
-          <input
-            style={styles.input}
-            placeholder="Scrivi un messaggio…"
-            value={testo}
-            onChange={(e) => setTesto(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && invia()}
-          />
-          <button style={styles.btn} onClick={invia}>
-            Invia
-          </button>
-        </div>
+      <div style={styles.composer}>
+        <textarea
+          style={styles.textarea}
+          placeholder="Scrivi un messaggio…"
+          value={testo}
+          onChange={(e) => setTesto(e.target.value)}
+          rows={1}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              invia();
+            }
+          }}
+        />
+        <button
+          style={{
+            ...styles.sendBtn,
+            ...(testo.trim() ? {} : styles.sendBtnDisabled),
+          }}
+          onClick={invia}
+          disabled={!testo.trim()}
+        >
+          Invia
+        </button>
       </div>
     </div>
   );
@@ -214,68 +263,167 @@ export default function App() {
 
 const styles = {
   page: {
-    minHeight: "100vh",
-    display: "grid",
-    placeItems: "center",
-    background: "#f4f5f7",
-    fontFamily: "system-ui, sans-serif",
-    padding: 16,
-  },
-  card: {
-    width: "min(900px, 100%)",
-    height: "min(85vh, 720px)",
-    background: "white",
-    borderRadius: 16,
-    boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-    overflow: "hidden",
+    height: "100vh",
     display: "flex",
     flexDirection: "column",
+    background: "#0b1220",
+    color: "#e8eefc",
+    fontFamily:
+      'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
   },
+
+  // Header (glass)
   header: {
-    padding: 16,
-    borderBottom: "1px solid #eee",
     display: "flex",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
     gap: 12,
+    padding: "14px 16px",
+    background: "rgba(255,255,255,0.06)",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    backdropFilter: "blur(10px)",
   },
-  title: { fontWeight: 800, fontSize: 18 },
-  sub: { fontSize: 12, opacity: 0.6 },
-  name: {
-    width: 220,
+  hTitle: { fontSize: 18, fontWeight: 800, letterSpacing: 0.2 },
+  hSub: { fontSize: 12, opacity: 0.75, marginTop: 2 },
+
+  headerRight: { display: "flex", gap: 10, alignItems: "center" },
+
+  meWrap: { display: "flex", gap: 8, alignItems: "center" },
+  meLabel: { fontSize: 12, opacity: 0.8 },
+  meInput: {
+    width: 170,
+    padding: "8px 10px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    outline: "none",
+  },
+
+  ghostBtn: {
     padding: "10px 12px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-  },
-  chat: { flex: 1, padding: 16, overflowY: "auto", background: "#fafafa" },
-  bubble: {
-    maxWidth: "70%",
-    padding: 12,
-    borderRadius: 14,
-    border: "1px solid #eee",
-  },
-  meta: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    fontSize: 12,
-    opacity: 0.75,
-    marginBottom: 6,
-  },
-  time: { fontSize: 11, opacity: 0.8 },
-  footer: { padding: 12, borderTop: "1px solid #eee", display: "flex", gap: 10 },
-  input: {
-    flex: 1,
-    padding: "12px 12px",
     borderRadius: 12,
-    border: "1px solid #ddd",
-  },
-  btn: {
-    padding: "12px 14px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    background: "white",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#e8eefc",
     cursor: "pointer",
     fontWeight: 700,
   },
+
+  // Messages
+  messagesWrap: { flex: 1, display: "flex", flexDirection: "column" },
+  messages: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "16px 14px 10px",
+  },
+  row: { display: "flex", marginBottom: 10 },
+
+  bubble: {
+    maxWidth: "min(560px, 86%)",
+    padding: "10px 12px",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  bubbleMine: {
+    background:
+      "linear-gradient(180deg, rgba(88,160,255,0.26), rgba(88,160,255,0.10))",
+    borderTopRightRadius: 8,
+  },
+  bubbleOther: {
+    background: "rgba(255,255,255,0.06)",
+    borderTopLeftRadius: 8,
+  },
+
+  username: {
+    fontSize: 12,
+    fontWeight: 800,
+    opacity: 0.9,
+    marginBottom: 4,
+  },
+  text: { fontSize: 14, lineHeight: 1.35 },
+  meta: {
+    marginTop: 6,
+    fontSize: 11,
+    opacity: 0.65,
+    textAlign: "right",
+  },
+
+  // Composer (glass)
+  composer: {
+    display: "flex",
+    gap: 10,
+    padding: "12px 14px",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    backdropFilter: "blur(10px)",
+  },
+  textarea: {
+    flex: 1,
+    resize: "none",
+    minHeight: 44,
+    maxHeight: 140,
+    padding: "12px 12px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    outline: "none",
+    lineHeight: 1.35,
+  },
+  sendBtn: {
+    padding: "0 16px",
+    height: 44,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(88,160,255,0.35)",
+    color: "#e8eefc",
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  sendBtnDisabled: { opacity: 0.45, cursor: "not-allowed" },
+
+  // Login screen (same style)
+  loginWrap: {
+    width: "min(520px, 92vw)",
+    margin: "auto",
+    borderRadius: 18,
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.06)",
+    boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
+    backdropFilter: "blur(12px)",
+  },
+  loginHeader: {
+    padding: 16,
+    borderBottom: "1px solid rgba(255,255,255,0.10)",
+  },
+  loginBody: {
+    padding: 16,
+    display: "grid",
+    gap: 12,
+  },
+  field: { display: "grid", gap: 6 },
+  label: { fontSize: 12, opacity: 0.8 },
+  input: {
+    padding: "12px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    outline: "none",
+  },
+  primaryBtn: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(88,160,255,0.35)",
+    color: "#e8eefc",
+    cursor: "pointer",
+    fontWeight: 900,
+  },
+  helper: { fontSize: 12, opacity: 0.65 },
 };
