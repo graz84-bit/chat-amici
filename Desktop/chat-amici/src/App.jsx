@@ -17,7 +17,7 @@ export default function App() {
   );
 
   const [testo, setTesto] = useState("");
-  const [msgs, setMsgs] = useState([]);
+  const [msgs, setMsgs] = useState([]); // ✅ FIX
   const bottomRef = useRef(null);
   const listRef = useRef(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -65,10 +65,7 @@ export default function App() {
     if (n.length < 2) return alert("Inserisci il tuo nome (min 2 lettere).");
     if (!t) return;
 
-    const { error } = await supabase.from(TABLE).insert({
-      username: n,
-      testo: t,
-    });
+    const { error } = await supabase.from(TABLE).insert({ username: n, testo: t });
 
     if (error) {
       console.error(error);
@@ -77,11 +74,11 @@ export default function App() {
     }
 
     setTesto("");
-    await carica(); // fallback: aggiorna subito anche se realtime ritarda
+    await carica(); // fallback
   }
 
   useEffect(() => {
-    document.title = CHAT_TITLE; // solo grafica/branding (tab browser)
+    document.title = CHAT_TITLE;
   }, []);
 
   useEffect(() => {
@@ -105,7 +102,6 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [autorizzato]);
 
-  // scroll intelligente: scende solo se sei "vicino al fondo"
   useEffect(() => {
     if (isNearBottom) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length, isNearBottom]);
@@ -113,7 +109,7 @@ export default function App() {
   function handleScroll() {
     const el = listRef.current;
     if (!el) return;
-    const threshold = 90; // px
+    const threshold = 90;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     setIsNearBottom(near);
   }
@@ -129,135 +125,130 @@ export default function App() {
     }
   }
 
-  // SCHERMATA INGRESSO
+  // LOGIN
   if (!autorizzato) {
     return (
-      <div style={styles.page}>
-        <div style={styles.loginWrap}>
-          <div style={styles.loginHeader}>
-            <div>
+      <>
+        <style>{`
+          html, body, #root { height: 100%; margin: 0; background: #0b1220; }
+        `}</style>
+
+        <div style={styles.page}>
+          <div style={styles.loginWrap}>
+            <div style={styles.loginHeader}>
               <div style={styles.hTitle}>{CHAT_TITLE}</div>
               <div style={styles.hSub}>Inserisci nome e codice per entrare</div>
             </div>
-          </div>
 
-          <div style={styles.loginBody}>
-            <div style={styles.field}>
-              <label style={styles.label}>Nome</label>
-              <input
-                style={styles.input}
-                placeholder="Il tuo nome"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-              />
-            </div>
+            <div style={styles.loginBody}>
+              <div style={styles.field}>
+                <label style={styles.label}>Nome</label>
+                <input
+                  style={styles.input}
+                  placeholder="Il tuo nome"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                />
+              </div>
 
-            <div style={styles.field}>
-              <label style={styles.label}>Codice chat</label>
-              <input
-                style={styles.input}
-                placeholder="Codice chat"
-                value={codice}
-                onChange={(e) => setCodice(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && entra()}
-              />
-            </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Codice chat</label>
+                <input
+                  style={styles.input}
+                  placeholder="Codice chat"
+                  value={codice}
+                  onChange={(e) => setCodice(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && entra()}
+                />
+              </div>
 
-            <button style={styles.primaryBtn} onClick={entra}>
-              Entra
-            </button>
+              <button style={styles.primaryBtn} onClick={entra}>
+                Entra
+              </button>
 
-            <div style={styles.helper}>
-              (Accesso semplice per amici. Non è un login.)
+              <div style={styles.helper}>(Accesso semplice per amici. Non è un login.)</div>
             </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   // CHAT
   return (
-    <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <div style={styles.hTitle}>{CHAT_TITLE}</div>
-          <div style={styles.hSub}>{msgs.length} messaggi</div>
+    <>
+      <style>{`
+        html, body, #root { height: 100%; margin: 0; background: #0b1220; }
+      `}</style>
+
+      <div style={styles.page}>
+        <div style={styles.header}>
+          <div>
+            <div style={styles.hTitle}>{CHAT_TITLE}</div>
+            <div style={styles.hSub}>{msgs.length} messaggi</div>
+          </div>
+
+          <div style={styles.headerRight}>
+            <div style={styles.meWrap}>
+              <span style={styles.meLabel}>Tu:</span>
+              <input
+                style={styles.meInput}
+                placeholder="Il tuo nome"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+              />
+            </div>
+            <button style={styles.ghostBtn} onClick={esci}>
+              Esci
+            </button>
+          </div>
         </div>
 
-        <div style={styles.headerRight}>
-          <div style={styles.meWrap}>
-            <span style={styles.meLabel}>Tu:</span>
-            <input
-              style={styles.meInput}
-              placeholder="Il tuo nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-            />
+        <div style={styles.messagesWrap}>
+          <div ref={listRef} onScroll={handleScroll} style={styles.messages}>
+            {msgs.map((m) => {
+              const mine = (m.username || "").trim().toLowerCase() === myName;
+              return (
+                <div
+                  key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
+                  style={{ ...styles.row, justifyContent: mine ? "flex-end" : "flex-start" }}
+                >
+                  <div style={{ ...styles.bubble, ...(mine ? styles.bubbleMine : styles.bubbleOther) }}>
+                    {!mine && <div style={styles.username}>{m.username || "?"}</div>}
+                    <div style={styles.text}>{m.testo}</div>
+                    <div style={styles.meta}>{fmtTime(m.created_at)}</div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
           </div>
-          <button style={styles.ghostBtn} onClick={esci}>
-            Esci
+        </div>
+
+        <div style={styles.composer}>
+          <textarea
+            style={styles.textarea}
+            placeholder="Scrivi un messaggio…"
+            value={testo}
+            onChange={(e) => setTesto(e.target.value)}
+            rows={1}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                invia();
+              }
+            }}
+          />
+          <button
+            style={{ ...styles.sendBtn, ...(testo.trim() ? {} : styles.sendBtnDisabled) }}
+            onClick={invia}
+            disabled={!testo.trim()}
+          >
+            Invia
           </button>
         </div>
       </div>
-
-      <div style={styles.messagesWrap}>
-        <div ref={listRef} onScroll={handleScroll} style={styles.messages}>
-          {msgs.map((m) => {
-            const mine = (m.username || "").trim().toLowerCase() === myName;
-            return (
-              <div
-                key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
-                style={{
-                  ...styles.row,
-                  justifyContent: mine ? "flex-end" : "flex-start",
-                }}
-              >
-                <div
-                  style={{
-                    ...styles.bubble,
-                    ...(mine ? styles.bubbleMine : styles.bubbleOther),
-                  }}
-                >
-                  {!mine && (
-                    <div style={styles.username}>{m.username || "?"}</div>
-                  )}
-                  <div style={styles.text}>{m.testo}</div>
-                  <div style={styles.meta}>{fmtTime(m.created_at)}</div>
-                </div>
-              </div>
-            );
-          })}
-          <div ref={bottomRef} />
-        </div>
-      </div>
-
-      <div style={styles.composer}>
-        <textarea
-          style={styles.textarea}
-          placeholder="Scrivi un messaggio…"
-          value={testo}
-          onChange={(e) => setTesto(e.target.value)}
-          rows={1}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              invia();
-            }
-          }}
-        />
-        <button
-          style={{
-            ...styles.sendBtn,
-            ...(testo.trim() ? {} : styles.sendBtnDisabled),
-          }}
-          onClick={invia}
-          disabled={!testo.trim()}
-        >
-          Invia
-        </button>
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -268,11 +259,9 @@ const styles = {
     flexDirection: "column",
     background: "#0b1220",
     color: "#e8eefc",
-    fontFamily:
-      'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
+    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
   },
 
-  // Header (glass)
   header: {
     display: "flex",
     alignItems: "center",
@@ -287,7 +276,6 @@ const styles = {
   hSub: { fontSize: 12, opacity: 0.75, marginTop: 2 },
 
   headerRight: { display: "flex", gap: 10, alignItems: "center" },
-
   meWrap: { display: "flex", gap: 8, alignItems: "center" },
   meLabel: { fontSize: 12, opacity: 0.8 },
   meInput: {
@@ -299,7 +287,6 @@ const styles = {
     color: "#e8eefc",
     outline: "none",
   },
-
   ghostBtn: {
     padding: "10px 12px",
     borderRadius: 12,
@@ -310,13 +297,8 @@ const styles = {
     fontWeight: 700,
   },
 
-  // Messages
   messagesWrap: { flex: 1, display: "flex", flexDirection: "column" },
-  messages: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "16px 14px 10px",
-  },
+  messages: { flex: 1, overflowY: "auto", padding: "16px 14px 10px" },
   row: { display: "flex", marginBottom: 10 },
 
   bubble: {
@@ -329,30 +311,17 @@ const styles = {
     wordBreak: "break-word",
   },
   bubbleMine: {
-    background:
-      "linear-gradient(180deg, rgba(88,160,255,0.26), rgba(88,160,255,0.10))",
+    background: "linear-gradient(180deg, rgba(88,160,255,0.26), rgba(88,160,255,0.10))",
     borderTopRightRadius: 8,
   },
   bubbleOther: {
     background: "rgba(255,255,255,0.06)",
     borderTopLeftRadius: 8,
   },
-
-  username: {
-    fontSize: 12,
-    fontWeight: 800,
-    opacity: 0.9,
-    marginBottom: 4,
-  },
+  username: { fontSize: 12, fontWeight: 800, opacity: 0.9, marginBottom: 4 },
   text: { fontSize: 14, lineHeight: 1.35 },
-  meta: {
-    marginTop: 6,
-    fontSize: 11,
-    opacity: 0.65,
-    textAlign: "right",
-  },
+  meta: { marginTop: 6, fontSize: 11, opacity: 0.65, textAlign: "right" },
 
-  // Composer (glass)
   composer: {
     display: "flex",
     gap: 10,
@@ -386,7 +355,6 @@ const styles = {
   },
   sendBtnDisabled: { opacity: 0.45, cursor: "not-allowed" },
 
-  // Login screen (same style)
   loginWrap: {
     width: "min(520px, 92vw)",
     margin: "auto",
@@ -397,15 +365,8 @@ const styles = {
     boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
     backdropFilter: "blur(12px)",
   },
-  loginHeader: {
-    padding: 16,
-    borderBottom: "1px solid rgba(255,255,255,0.10)",
-  },
-  loginBody: {
-    padding: 16,
-    display: "grid",
-    gap: 12,
-  },
+  loginHeader: { padding: 16, borderBottom: "1px solid rgba(255,255,255,0.10)" },
+  loginBody: { padding: 16, display: "grid", gap: 12 },
   field: { display: "grid", gap: 6 },
   label: { fontSize: 12, opacity: 0.8 },
   input: {
@@ -427,3 +388,4 @@ const styles = {
   },
   helper: { fontSize: 12, opacity: 0.65 },
 };
+
