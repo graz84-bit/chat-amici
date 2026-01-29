@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -42,11 +42,17 @@ export default function App() {
   }
 
   async function carica() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from(TABLE)
       .select("id, created_at, testo, username")
       .order("created_at", { ascending: true })
       .limit(200);
+
+    if (error) {
+      console.error(error);
+      alert("Errore lettura: " + error.message);
+      return;
+    }
 
     setMsgs(data || []);
   }
@@ -56,10 +62,11 @@ export default function App() {
     const t = testo.trim();
     if (!t) return;
 
-    // === AI ===
     if (t.toLowerCase().startsWith("/ai ")) {
       const prompt = t.slice(4).trim();
       if (!prompt) return;
+
+      setTesto("");
 
       try {
         const res = await fetch("/api/ai", {
@@ -68,24 +75,41 @@ export default function App() {
           body: JSON.stringify({ prompt }),
         });
 
-        const json = await res.json();
-        if (json?.text) {
-          await supabase.from(TABLE).insert({
-            username: "AI",
-            testo: json.text,
-          });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(data?.error || `HTTP ${res.status}`);
         }
 
-        setTesto("");
+        const aiText = (data?.text || "").trim();
+        if (!aiText) {
+          throw new Error("Risposta AI vuota");
+        }
+
+        const { error } = await supabase.from(TABLE).insert({
+          username: "AI",
+          testo: aiText,
+        });
+
+        if (error) throw new Error("DB: " + error.message);
+
         await carica();
         return;
-      } catch {
-        alert("AI non disponibile");
+      } catch (err) {
+        console.error(err);
+        alert("Errore AI: " + (err?.message || "sconosciuto"));
         return;
       }
     }
 
-    await supabase.from(TABLE).insert({ username: n, testo: t });
+    const { error } = await supabase.from(TABLE).insert({ username: n, testo: t });
+
+    if (error) {
+      console.error(error);
+      alert("Errore invio: " + error.message);
+      return;
+    }
+
     setTesto("");
     await carica();
   }
@@ -149,10 +173,10 @@ export default function App() {
       <div style={styles.chat}>
         {msgs.map((m) => (
           <div
-            key={m.id}
+            key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
             style={{
               marginBottom: 8,
-              textAlign: m.username === nome ? "right" : "left",
+              textAlign: (m.username || "").trim() === nome.trim() ? "right" : "left",
             }}
           >
             <b>{m.username}</b>: {m.testo}
