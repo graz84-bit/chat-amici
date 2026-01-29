@@ -3,9 +3,7 @@ import OpenAI from "openai";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
+  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
     const { prompt } = req.body || {};
@@ -16,8 +14,7 @@ export default async function handler(req, res) {
     const r = await client.responses.create({
       model: "gpt-5",
       reasoning: { effort: "low" },
-      instructions:
-        "Rispondi in italiano, in modo pratico e breve. Se mancano info, fai UNA sola domanda.",
+      instructions: "Rispondi in italiano, breve e chiaro.",
       input: prompt,
     });
 
