@@ -103,10 +103,14 @@ export default function App() {
     setTesto("");
 
     try {
-      if (forceAI || t.toLowerCase().startsWith("/ai ")) {
-        const prompt = forceAI ? t : t.slice(4).trim();
+      const isCmdAI = t.toLowerCase().startsWith("/ai ");
+      const isAna = forceAI || isCmdAI;
+
+      if (isAna) {
+        const prompt = isCmdAI ? t.slice(4).trim() : t;
         if (!prompt) return;
 
+        await inviaMessaggioNormale(prompt);
         await inviaAna(prompt);
         return;
       }
@@ -248,7 +252,10 @@ export default function App() {
         />
 
         <button
-          style={{ ...styles.aiBtn, ...(testo.trim() && !sending ? {} : styles.btnDisabled) }}
+          style={{
+            ...styles.aiBtn,
+            ...(testo.trim() && !sending ? {} : styles.btnDisabled),
+          }}
           onClick={() => invia({ forceAI: true })}
           disabled={!testo.trim() || sending}
           title="Invia il testo ad Ana"
@@ -257,7 +264,10 @@ export default function App() {
         </button>
 
         <button
-          style={{ ...styles.sendBtn, ...(testo.trim() && !sending ? {} : styles.btnDisabled) }}
+          style={{
+            ...styles.sendBtn,
+            ...(testo.trim() && !sending ? {} : styles.btnDisabled),
+          }}
           onClick={() => invia()}
           disabled={!testo.trim() || sending}
         >
