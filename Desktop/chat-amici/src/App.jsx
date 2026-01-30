@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -19,8 +19,10 @@ export default function App() {
   const [testo, setTesto] = useState("");
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
+  const [sending, setSending] = useState(false);
 
-  const CHAT_TITLE = "SecureMov Chat";
+  const CHAT_TITLE = "Chat SecureMov";
+  const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
 
   function entra() {
     const n = nome.trim();
@@ -57,61 +59,72 @@ export default function App() {
     setMsgs(data || []);
   }
 
-  async function invia() {
+  function fmtTime(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+
+  async function inviaMessaggioNormale(text) {
     const n = nome.trim();
+    if (n.length < 2) return alert("Inserisci il tuo nome.");
+    const { error } = await supabase.from(TABLE).insert({ username: n, testo: text });
+    if (error) throw new Error(error.message);
+  }
+
+  async function inviaAI(prompt) {
+    const res = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+    const aiText = (data?.text || "").trim();
+    if (!aiText) throw new Error("Risposta AI vuota");
+
+    const { error } = await supabase
+      .from(TABLE)
+      .insert({ username: "AI", testo: aiText });
+
+    if (error) throw new Error("DB: " + error.message);
+  }
+
+  async function invia({ forceAI = false } = {}) {
     const t = testo.trim();
-    if (!t) return;
+    if (!t || sending) return;
 
-    if (t.toLowerCase().startsWith("/ai ")) {
-      const prompt = t.slice(4).trim();
-      if (!prompt) return;
+    setSending(true);
 
-      setTesto("");
-
-      try {
-        const res = await fetch("/api/ai", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt }),
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(data?.error || `HTTP ${res.status}`);
+    try {
+      // Supporto anche al comando /ai
+      if (forceAI || t.toLowerCase().startsWith("/ai ")) {
+        const prompt = forceAI ? t : t.slice(4).trim();
+        if (!prompt) {
+          setSending(false);
+          return;
         }
 
-        const aiText = (data?.text || "").trim();
-        if (!aiText) {
-          throw new Error("Risposta AI vuota");
-        }
-
-        const { error } = await supabase.from(TABLE).insert({
-          username: "AI",
-          testo: aiText,
-        });
-
-        if (error) throw new Error("DB: " + error.message);
-
+        setTesto("");
+        await inviaAI(prompt);
         await carica();
         return;
-      } catch (err) {
-        console.error(err);
-        alert("Errore AI: " + (err?.message || "sconosciuto"));
-        return;
       }
+
+      setTesto("");
+      await inviaMessaggioNormale(t);
+      await carica();
+    } catch (e) {
+      console.error(e);
+      alert((forceAI ? "Errore AI: " : "Errore invio: ") + (e?.message || "sconosciuto"));
+    } finally {
+      setSending(false);
     }
-
-    const { error } = await supabase.from(TABLE).insert({ username: n, testo: t });
-
-    if (error) {
-      console.error(error);
-      alert("Errore invio: " + error.message);
-      return;
-    }
-
-    setTesto("");
-    await carica();
   }
 
   useEffect(() => {
@@ -138,24 +151,36 @@ export default function App() {
   if (!autorizzato) {
     return (
       <div style={styles.loginPage}>
-        <div style={styles.loginBox}>
-          <h2>{CHAT_TITLE}</h2>
-          <input
-            style={styles.input}
-            placeholder="Nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
-          <input
-            style={styles.input}
-            placeholder="Codice chat"
-            value={codice}
-            onChange={(e) => setCodice(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && entra()}
-          />
-          <button style={styles.btn} onClick={entra}>
+        <div style={styles.loginCard}>
+          <div style={styles.loginTitle}>{CHAT_TITLE}</div>
+          <div style={styles.loginSub}>Inserisci nome e codice per entrare</div>
+
+          <div style={styles.field}>
+            <div style={styles.label}>Nome</div>
+            <input
+              style={styles.input}
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Il tuo nome"
+            />
+          </div>
+
+          <div style={styles.field}>
+            <div style={styles.label}>Codice chat</div>
+            <input
+              style={styles.input}
+              value={codice}
+              onChange={(e) => setCodice(e.target.value)}
+              placeholder="Codice"
+              onKeyDown={(e) => e.key === "Enter" && entra()}
+            />
+          </div>
+
+          <button style={styles.primaryBtn} onClick={entra}>
             Entra
           </button>
+
+          <div style={styles.helper}>(Accesso semplice per amici. Non è un login.)</div>
         </div>
       </div>
     );
@@ -164,36 +189,73 @@ export default function App() {
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        {CHAT_TITLE}
-        <button style={styles.exit} onClick={esci}>
+        <div>
+          <div style={styles.hTitle}>{CHAT_TITLE}</div>
+          <div style={styles.hSub}>{msgs.length} messaggi</div>
+        </div>
+        <button style={styles.ghostBtn} onClick={esci}>
           Esci
         </button>
       </div>
 
       <div style={styles.chat}>
-        {msgs.map((m) => (
-          <div
-            key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
-            style={{
-              marginBottom: 8,
-              textAlign: (m.username || "").trim() === nome.trim() ? "right" : "left",
-            }}
-          >
-            <b>{m.username}</b>: {m.testo}
-          </div>
-        ))}
+        {msgs.map((m) => {
+          const mine = (m.username || "").trim().toLowerCase() === myName;
+          const isAI = (m.username || "").trim().toLowerCase() === "ai";
+
+          return (
+            <div
+              key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
+              style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 10 }}
+            >
+              <div
+                style={{
+                  ...styles.bubble,
+                  ...(mine ? styles.bubbleMine : styles.bubbleOther),
+                  ...(isAI ? styles.bubbleAI : {}),
+                }}
+              >
+                <div style={styles.metaRow}>
+                  <div style={styles.user}>{m.username || "?"}</div>
+                  <div style={styles.time}>{fmtTime(m.created_at)}</div>
+                </div>
+                <div style={styles.text}>{m.testo}</div>
+              </div>
+            </div>
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
       <div style={styles.footer}>
-        <input
-          style={styles.input}
+        <textarea
+          style={styles.textarea}
           value={testo}
           onChange={(e) => setTesto(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && invia()}
-          placeholder="Scrivi un messaggio o /ai ..."
+          placeholder="Scrivi un messaggio… (oppure usa /ai ... o premi AI)"
+          rows={1}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              invia();
+            }
+          }}
         />
-        <button style={styles.btn} onClick={invia}>
+
+        <button
+          style={{ ...styles.aiBtn, ...(testo.trim() && !sending ? {} : styles.btnDisabled) }}
+          onClick={() => invia({ forceAI: true })}
+          disabled={!testo.trim() || sending}
+          title="Invia il testo all'AI"
+        >
+          AI
+        </button>
+
+        <button
+          style={{ ...styles.sendBtn, ...(testo.trim() && !sending ? {} : styles.btnDisabled) }}
+          onClick={() => invia()}
+          disabled={!testo.trim() || sending}
+        >
           Invia
         </button>
       </div>
@@ -207,46 +269,153 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     background: "#0b1220",
-    color: "white",
+    color: "#e8eefc",
+    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
   },
+
   header: {
-    padding: 12,
-    borderBottom: "1px solid #333",
+    padding: "14px 16px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    backdropFilter: "blur(10px)",
   },
+  hTitle: { fontSize: 18, fontWeight: 900, letterSpacing: 0.2 },
+  hSub: { fontSize: 12, opacity: 0.75, marginTop: 2 },
+
   chat: {
     flex: 1,
-    padding: 12,
     overflowY: "auto",
+    padding: "16px 14px",
   },
-  footer: {
+
+  bubble: {
+    maxWidth: "min(720px, 86%)",
+    padding: "10px 12px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.22)",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  bubbleMine: {
+    background: "linear-gradient(180deg, rgba(88,160,255,0.22), rgba(88,160,255,0.10))",
+    borderTopRightRadius: 8,
+  },
+  bubbleOther: {
+    background: "rgba(255,255,255,0.06)",
+    borderTopLeftRadius: 8,
+  },
+  bubbleAI: {
+    background: "linear-gradient(180deg, rgba(160,255,180,0.14), rgba(160,255,180,0.06))",
+  },
+
+  metaRow: {
     display: "flex",
-    gap: 8,
-    padding: 12,
-    borderTop: "1px solid #333",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "center",
+    marginBottom: 6,
+    opacity: 0.85,
   },
-  input: {
+  user: { fontSize: 12, fontWeight: 900 },
+  time: { fontSize: 11, opacity: 0.7 },
+  text: { fontSize: 14, lineHeight: 1.35 },
+
+  footer: {
+    padding: "12px 14px",
+    display: "flex",
+    gap: 10,
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    backdropFilter: "blur(10px)",
+  },
+  textarea: {
     flex: 1,
-    padding: 10,
+    resize: "none",
+    minHeight: 44,
+    maxHeight: 140,
+    padding: "12px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    outline: "none",
   },
-  btn: {
-    padding: "10px 14px",
+
+  sendBtn: {
+    height: 44,
+    padding: "0 16px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(88,160,255,0.35)",
+    color: "#e8eefc",
+    fontWeight: 900,
+    cursor: "pointer",
   },
-  exit: {
-    float: "right",
+  aiBtn: {
+    height: 44,
+    padding: "0 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(160,255,180,0.20)",
+    color: "#e8eefc",
+    fontWeight: 900,
+    cursor: "pointer",
   },
+  btnDisabled: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+
+  ghostBtn: {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.06)",
+    color: "#e8eefc",
+    cursor: "pointer",
+    fontWeight: 800,
+  },
+
   loginPage: {
     height: "100vh",
     display: "grid",
     placeItems: "center",
     background: "#0b1220",
+    color: "#e8eefc",
   },
-  loginBox: {
-    background: "#111",
-    padding: 24,
-    borderRadius: 10,
-    color: "white",
-    display: "grid",
-    gap: 10,
-    width: 280,
+  loginCard: {
+    width: "min(520px, 92vw)",
+    padding: 18,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.06)",
+    boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
   },
+  loginTitle: { fontSize: 20, fontWeight: 900, marginBottom: 4 },
+  loginSub: { fontSize: 12, opacity: 0.75, marginBottom: 14 },
+  field: { display: "grid", gap: 6, marginBottom: 12 },
+  label: { fontSize: 12, opacity: 0.8 },
+  input: {
+    padding: "12px 12px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.25)",
+    color: "#e8eefc",
+    outline: "none",
+  },
+  primaryBtn: {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(88,160,255,0.35)",
+    color: "#e8eefc",
+    cursor: "pointer",
+    fontWeight: 900,
+  },
+  helper: { marginTop: 10, fontSize: 12, opacity: 0.65 },
 };
