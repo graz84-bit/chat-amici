@@ -75,7 +75,7 @@ export default function App() {
     if (error) throw new Error(error.message);
   }
 
-  async function inviaAI(prompt) {
+  async function inviaAna(prompt) {
     const res = await fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -85,12 +85,12 @@ export default function App() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
 
-    const aiText = (data?.text || "").trim();
-    if (!aiText) throw new Error("Risposta AI vuota");
+    const anaText = (data?.text || "").trim();
+    if (!anaText) throw new Error("Risposta Ana vuota");
 
     const { error } = await supabase
       .from(TABLE)
-      .insert({ username: "AI", testo: aiText });
+      .insert({ username: "Ana", testo: anaText });
 
     if (error) throw new Error("DB: " + error.message);
   }
@@ -100,28 +100,21 @@ export default function App() {
     if (!t || sending) return;
 
     setSending(true);
+    setTesto("");
 
     try {
-      // Supporto anche al comando /ai
       if (forceAI || t.toLowerCase().startsWith("/ai ")) {
         const prompt = forceAI ? t : t.slice(4).trim();
-        if (!prompt) {
-          setSending(false);
-          return;
-        }
+        if (!prompt) return;
 
-        setTesto("");
-        await inviaAI(prompt);
-        await carica();
+        await inviaAna(prompt);
         return;
       }
 
-      setTesto("");
       await inviaMessaggioNormale(t);
-      await carica();
     } catch (e) {
       console.error(e);
-      alert((forceAI ? "Errore AI: " : "Errore invio: ") + (e?.message || "sconosciuto"));
+      alert((forceAI ? "Errore Ana: " : "Errore invio: ") + (e?.message || "sconosciuto"));
     } finally {
       setSending(false);
     }
@@ -132,12 +125,20 @@ export default function App() {
 
     carica();
 
+    const seen = new Set();
+
     const channel = supabase
       .channel("securemov-chat")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: TABLE },
-        (payload) => setMsgs((prev) => [...prev, payload.new])
+        (payload) => {
+          const m = payload.new;
+          const key = m?.id ?? `${m?.created_at}-${m?.username}-${m?.testo}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          setMsgs((prev) => [...prev, m]);
+        }
       )
       .subscribe();
 
@@ -201,18 +202,22 @@ export default function App() {
       <div style={styles.chat}>
         {msgs.map((m) => {
           const mine = (m.username || "").trim().toLowerCase() === myName;
-          const isAI = (m.username || "").trim().toLowerCase() === "ai";
+          const isAna = (m.username || "").trim().toLowerCase() === "ana";
 
           return (
             <div
               key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
-              style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start", marginBottom: 10 }}
+              style={{
+                display: "flex",
+                justifyContent: mine ? "flex-end" : "flex-start",
+                marginBottom: 10,
+              }}
             >
               <div
                 style={{
                   ...styles.bubble,
                   ...(mine ? styles.bubbleMine : styles.bubbleOther),
-                  ...(isAI ? styles.bubbleAI : {}),
+                  ...(isAna ? styles.bubbleAna : {}),
                 }}
               >
                 <div style={styles.metaRow}>
@@ -232,7 +237,7 @@ export default function App() {
           style={styles.textarea}
           value={testo}
           onChange={(e) => setTesto(e.target.value)}
-          placeholder="Scrivi un messaggio… (oppure usa /ai ... o premi AI)"
+          placeholder="Scrivi un messaggio… (oppure usa /ai ... o premi Ana)"
           rows={1}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -246,9 +251,9 @@ export default function App() {
           style={{ ...styles.aiBtn, ...(testo.trim() && !sending ? {} : styles.btnDisabled) }}
           onClick={() => invia({ forceAI: true })}
           disabled={!testo.trim() || sending}
-          title="Invia il testo all'AI"
+          title="Invia il testo ad Ana"
         >
-          AI
+          Ana
         </button>
 
         <button
@@ -270,7 +275,8 @@ const styles = {
     flexDirection: "column",
     background: "#0b1220",
     color: "#e8eefc",
-    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
+    fontFamily:
+      'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial',
   },
 
   header: {
@@ -301,15 +307,17 @@ const styles = {
     wordBreak: "break-word",
   },
   bubbleMine: {
-    background: "linear-gradient(180deg, rgba(88,160,255,0.22), rgba(88,160,255,0.10))",
+    background:
+      "linear-gradient(180deg, rgba(88,160,255,0.22), rgba(88,160,255,0.10))",
     borderTopRightRadius: 8,
   },
   bubbleOther: {
     background: "rgba(255,255,255,0.06)",
     borderTopLeftRadius: 8,
   },
-  bubbleAI: {
-    background: "linear-gradient(180deg, rgba(160,255,180,0.14), rgba(160,255,180,0.06))",
+  bubbleAna: {
+    background:
+      "linear-gradient(180deg, rgba(160,255,180,0.14), rgba(160,255,180,0.06))",
   },
 
   metaRow: {
