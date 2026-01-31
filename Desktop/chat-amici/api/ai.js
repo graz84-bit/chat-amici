@@ -128,10 +128,10 @@ ISTRUZIONI:
 
     // ====== 3) Chiama OpenAI ======
     const response = await client.responses.create({
-      model: "gpt-5",
-      input: fullPrompt,
-      temperature: 0.2,
-    });
+  model: "gpt-5",
+  input: fullPrompt,
+});
+
 
     const anaText = String(response.output_text || "").trim();
     if (!anaText) {
