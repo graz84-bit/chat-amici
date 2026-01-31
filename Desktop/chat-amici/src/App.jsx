@@ -9,106 +9,18 @@ const supabase = createClient(
 const TABLE = "securemov";
 const JOIN_CODE = import.meta.env.VITE_JOIN_CODE || "";
 
-// ====== ANA: configurazione ======
-const SUMMARY_KEY = "ana_chat_summary_v1";
-
-// Prompt fisso (identità e regole)
-const ANA_SYSTEM = `
-Sei Ana, assistente digitale di SecureMov.
-Spieghi documenti, report e verifiche in modo chiaro e semplice.
-Non inventi dati. Non fornisci consulenza legale o finanziaria.
-Usi solo le informazioni fornite nel contesto.
-Se un dato manca, lo dichiari esplicitamente.
-Stile: neutro, pratico, frasi brevi.
-`.trim();
-
-// Se vuoi, qui puoi mettere i nomi dei documenti “attivi” (opzionale)
+// ====== ANA: documenti “attivi” (opzionale, puoi cambiare) ======
 const ANA_DOCS = [
   "Report Ricerca Azienda SecureMov",
   "Report Ricerca Social SecureMov",
 ];
 
-// ====== Utility: riassunto ======
-function appendSummaryLine(prevSummary, line) {
-  const prev = (prevSummary || "").trim();
-  const lines = prev ? prev.split("\n") : [];
-  lines.push(line.slice(0, 240)); // limita lunghezza riga
-  return lines.slice(-20).join("\n"); // tieni max 20 righe
-}
-
-function buildMemoryPrompt({ summary, docs }) {
-  const docsText = (docs && docs.length)
-    ? docs.map((d) => `- ${d}`).join("\n")
-    : "- (nessuno)";
-
-  const s = (summary || "").trim() || "(nessun riassunto ancora)";
-
-  return `
-CONTESTO CHAT (MEMORIA):
-Obiettivo: supportare l’utente nella comprensione dei documenti/report SecureMov in modo semplice.
-
-Documenti disponibili:
-${docsText}
-
-Riassunto conversazione:
-${s}
-
-Regole:
-- usare solo dati presenti nel contesto
-- non inventare
-- se mancano informazioni, dirlo chiaramente
-`.trim();
-}
-
-function usernameToRole(username, myNameLower) {
-  const u = (username || "").trim().toLowerCase();
-  if (u === "ana") return "assistant";
-  if (u === myNameLower) return "user";
-  // altri utenti: li trattiamo come "user" (sono messaggi di chat)
-  return "user";
-}
-
-function buildHistoryText(msgs, myNameLower, max = 30) {
+// ====== Utility: history text (per backend) ======
+function fmtForHistory(msgs, max = 30) {
   const tail = (msgs || []).slice(-max);
   return tail
-    .map((m) => {
-      const role = usernameToRole(m.username, myNameLower);
-      const who =
-        role === "assistant" ? "Ana" : (m.username || "Utente");
-      const text = (m.testo || "").trim();
-      return `${who}: ${text}`;
-    })
+    .map((m) => `${m.username || "?"}: ${(m.testo || "").trim()}`)
     .join("\n");
-}
-
-function buildAnaPrompt({
-  userPrompt,
-  summary,
-  docs,
-  msgs,
-  myNameLower,
-}) {
-  const memory = buildMemoryPrompt({ summary, docs });
-  const history = buildHistoryText(msgs, myNameLower, 30);
-
-  // Prompt unico compatibile col tuo backend attuale (/api/ai accetta {prompt})
-  return `
-${ANA_SYSTEM}
-
-${memory}
-
-STORICO RECENTE (chat):
-${history || "(nessun messaggio storico)"}
-
-RICHIESTA UTENTE:
-${userPrompt}
-
-ISTRUZIONI:
-- rispondi in italiano
-- frasi brevi
-- non inventare dati
-- se qualcosa non è disponibile, dillo chiaramente
-`.trim();
 }
 
 export default function App() {
@@ -122,15 +34,6 @@ export default function App() {
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
   const [sending, setSending] = useState(false);
-
-  // ====== NUOVO: memoria riassunta per Ana ======
-  const [chatSummary, setChatSummary] = useState(
-    localStorage.getItem(SUMMARY_KEY) || ""
-  );
-
-  useEffect(() => {
-    localStorage.setItem(SUMMARY_KEY, chatSummary);
-  }, [chatSummary]);
 
   const CHAT_TITLE = "Chat SecureMov";
   const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
@@ -186,20 +89,20 @@ export default function App() {
     if (error) throw new Error(error.message);
   }
 
-  // ====== MODIFICATO: Ana riceve prompt completo (system + memoria + history + user) ======
-  async function inviaAna(userPrompt, summarySnapshot, msgsSnapshot) {
-    const fullPrompt = buildAnaPrompt({
-      userPrompt,
-      summary: summarySnapshot,
-      docs: ANA_DOCS,
-      msgs: msgsSnapshot,
-      myNameLower: myName,
-    });
+  // ====== MODIFICATO: Ana con memoria esterna (backend /api/ai) ======
+  async function inviaAna(userPrompt, msgsSnapshot) {
+    const chatId = (codice || "").trim() || "default";
+    const history = fmtForHistory(msgsSnapshot, 30);
 
     const res = await fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: fullPrompt }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        user_prompt: userPrompt,
+        history,
+        docs: ANA_DOCS,
+      }),
     });
 
     const data = await res.json().catch(() => ({}));
@@ -213,8 +116,6 @@ export default function App() {
       .insert({ username: "Ana", testo: anaText });
 
     if (error) throw new Error("DB: " + error.message);
-
-    return anaText;
   }
 
   async function invia({ forceAI = false } = {}) {
@@ -232,26 +133,18 @@ export default function App() {
         const prompt = isCmdAI ? t.slice(4).trim() : t;
         if (!prompt) return;
 
-        // 1) salva il messaggio utente in chat (come già facevi)
+        // 1) invia messaggio utente in chat
         await inviaMessaggioNormale(prompt);
 
-        // 2) aggiorna subito la memoria (riga utente)
+        // 2) snapshot: includi anche il messaggio appena inviato (per history coerente)
         const n = nome.trim() || "Utente";
-        const nextSummaryUser = appendSummaryLine(chatSummary, `U(${n}): ${prompt}`);
-        setChatSummary(nextSummaryUser);
-
-        // 3) costruisci uno snapshot messaggi includendo anche il nuovo messaggio utente
-        //    (così la history include l'ultima riga appena inviata)
         const msgsSnapshot = [
           ...(msgs || []),
           { username: n, testo: prompt, created_at: new Date().toISOString() },
         ];
 
-        // 4) chiama Ana passando summary e history aggiornati
-        const anaReply = await inviaAna(prompt, nextSummaryUser, msgsSnapshot);
-
-        // 5) aggiorna memoria con risposta Ana
-        setChatSummary((prev) => appendSummaryLine(prev, `A(Ana): ${anaReply}`));
+        // 3) invia ad Ana (backend gestisce la memoria su Supabase)
+        await inviaAna(prompt, msgsSnapshot);
 
         return;
       }
