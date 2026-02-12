@@ -195,22 +195,28 @@ export default function App() {
           <div style={styles.loginSub}>Inserisci nome e codice per entrare</div>
 
           <div style={styles.field}>
-            <div style={styles.label}>Nome</div>
+            <label htmlFor="nome" style={styles.label}>Nome</label>
             <input
+              id="nome"
+              name="nome"
               style={styles.input}
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               placeholder="Il tuo nome"
+              autoComplete="name"
             />
           </div>
 
           <div style={styles.field}>
-            <div style={styles.label}>Codice chat</div>
+            <label htmlFor="codice" style={styles.label}>Codice chat</label>
             <input
+              id="codice"
+              name="codice"
               style={styles.input}
               value={codice}
               onChange={(e) => setCodice(e.target.value)}
               placeholder="Codice"
+              autoComplete="off"
               onKeyDown={(e) => e.key === "Enter" && entra()}
             />
           </div>
@@ -272,6 +278,8 @@ export default function App() {
 
       <div style={styles.footer}>
         <textarea
+          id="messaggio"
+          name="messaggio"
           style={styles.textarea}
           value={testo}
           onChange={(e) => setTesto(e.target.value)}
