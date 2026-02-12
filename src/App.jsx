@@ -35,7 +35,7 @@ export default function App() {
   const bottomRef = useRef(null);
   const [sending, setSending] = useState(false);
 
-  const CHAT_TITLE = "Chat SecureMov";
+  const CHAT_TITLE = "Chat SecureMov v2";
   const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
 
   function entra() {
