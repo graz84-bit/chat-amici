@@ -38,7 +38,7 @@ export default function App() {
   // Notifiche (toast semplice)
   const [toast, setToast] = useState("");
 
-  const CHAT_TITLE = "Chat SecureMov";
+  const CHAT_TITLE = "Chat SecureMov v3";
   const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
 
   // ====== NOTIFICA (pronta per espansioni) ======
@@ -193,16 +193,19 @@ export default function App() {
     }
   }
 
-  // ====== realtime supabase ======
-  useEffect(() => {
-    if (!autorizzato) return;
+ // ====== realtime supabase ======
+useEffect(() => {
+  if (!autorizzato) return;
 
-    carica();
-    const seen = new Set();
+  carica();
+  const seen = new Set();
 
-    const channel = supabase
-      .channel("securemov-chat")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: TABLE }, (payload) => {
+  const channel = supabase
+    .channel("securemov-chat")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: TABLE },
+      (payload) => {
         const m = payload.new;
         const key = m?.id ?? `${m?.created_at}-${m?.username}-${m?.testo}`;
         if (seen.has(key)) return;
@@ -210,17 +213,22 @@ export default function App() {
 
         setMsgs((prev) => [...prev, m]);
 
-        // notifica solo se arriva un messaggio non tuo
+        // notifica solo se arriva un messaggio non tuo e l'app è in background
         const mine = (m?.username || "").trim().toLowerCase() === myName;
-        if (!mine) notify(`${m.username || "?"}: ${(m.testo || "").slice(0, 80)}`);
-      })
-      .subscribe();
+        if (!mine && document.hidden) {
+          notify(`${m.username || "?"}: ${(m.testo || "").slice(0, 80)}`);
+        }
+      }
+    )
+    .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autorizzato]);
+  return () => {
+    supabase.removeChannel(channel);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [autorizzato]);
+
 
   // autoscroll
   useEffect(() => {
