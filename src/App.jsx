@@ -24,18 +24,21 @@ function fmtForHistory(msgs, max = 30) {
 }
 
 export default function App() {
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [nome, setNome] = useState(localStorage.getItem("username") || "");
   const [codice, setCodice] = useState(localStorage.getItem("join_code") || "");
   const [autorizzato, setAutorizzato] = useState(
     localStorage.getItem("autorizzato") === "1"
   );
+  // ...
+}
 
   const [testo, setTesto] = useState("");
   const [msgs, setMsgs] = useState([]);
   const bottomRef = useRef(null);
   const [sending, setSending] = useState(false);
 
-  const CHAT_TITLE = "Chat SecureMov v2";
+  const CHAT_TITLE = "Chat SecureMov v3";
   const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
 
   function entra() {
@@ -143,182 +146,70 @@ export default function App() {
           { username: n, testo: prompt, created_at: new Date().toISOString() },
         ];
 
-        // 3) invia ad Ana (backend gestisce la memoria su Supabase)
-        await inviaAna(prompt, msgsSnapshot);
+       // 3) invia ad Ana (backend gestisce la memoria su Supabase)
+await inviaAna(prompt, msgsSnapshot);
 
-        return;
-      }
-
-      await inviaMessaggioNormale(t);
-    } catch (e) {
-      console.error(e);
-      alert((forceAI ? "Errore Ana: " : "Errore invio: ") + (e?.message || "sconosciuto"));
-    } finally {
-      setSending(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!autorizzato) return;
-
-    carica();
-
-    const seen = new Set();
-
-    const channel = supabase
-      .channel("securemov-chat")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: TABLE },
-        (payload) => {
-          const m = payload.new;
-          const key = m?.id ?? `${m?.created_at}-${m?.username}-${m?.testo}`;
-          if (seen.has(key)) return;
-          seen.add(key);
-          setMsgs((prev) => [...prev, m]);
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [autorizzato]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs.length]);
-
-  if (!autorizzato) {
-    return (
-      <div style={styles.loginPage}>
-        <div style={styles.loginCard}>
-          <div style={styles.loginTitle}>{CHAT_TITLE}</div>
-          <div style={styles.loginSub}>Inserisci nome e codice per entrare</div>
-
-          <div style={styles.field}>
-            <label htmlFor="nome" style={styles.label}>Nome</label>
-            <input
-              id="nome"
-              name="nome"
-              style={styles.input}
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Il tuo nome"
-              autoComplete="name"
-            />
-          </div>
-
-          <div style={styles.field}>
-            <label htmlFor="codice" style={styles.label}>Codice chat</label>
-            <input
-              id="codice"
-              name="codice"
-              style={styles.input}
-              value={codice}
-              onChange={(e) => setCodice(e.target.value)}
-              placeholder="Codice"
-              autoComplete="off"
-              onKeyDown={(e) => e.key === "Enter" && entra()}
-            />
-          </div>
-
-          <button style={styles.primaryBtn} onClick={entra}>
-            Entra
-          </button>
-
-          <div style={styles.helper}>(Accesso semplice per amici. Non è un login.)</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <div style={styles.hTitle}>{CHAT_TITLE}</div>
-          <div style={styles.hSub}>{msgs.length} messaggi</div>
-        </div>
-        <button style={styles.ghostBtn} onClick={esci}>
-          Esci
-        </button>
-      </div>
-
-      <div style={styles.chat}>
-        {msgs.map((m) => {
-          const mine = (m.username || "").trim().toLowerCase() === myName;
-          const isAna = (m.username || "").trim().toLowerCase() === "ana";
-
-          return (
-            <div
-              key={m.id ?? `${m.created_at}-${m.username}-${m.testo}`}
-              style={{
-                display: "flex",
-                justifyContent: mine ? "flex-end" : "flex-start",
-                marginBottom: 10,
-              }}
-            >
-              <div
-                style={{
-                  ...styles.bubble,
-                  ...(mine ? styles.bubbleMine : styles.bubbleOther),
-                  ...(isAna ? styles.bubbleAna : {}),
-                }}
-              >
-                <div style={styles.metaRow}>
-                  <div style={styles.user}>{m.username || "?"}</div>
-                  <div style={styles.time}>{fmtTime(m.created_at)}</div>
-                </div>
-                <div style={styles.text}>{m.testo}</div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
-
-      <div style={styles.footer}>
-        <textarea
-          id="messaggio"
-          name="messaggio"
-          style={styles.textarea}
-          value={testo}
-          onChange={(e) => setTesto(e.target.value)}
-          placeholder="Scrivi un messaggio… (oppure usa /ai ... o premi Ana)"
-          rows={1}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              invia();
-            }
-          }}
-        />
-
-        <button
-          style={{
-            ...styles.aiBtn,
-            ...(testo.trim() && !sending ? {} : styles.btnDisabled),
-          }}
-          onClick={() => invia({ forceAI: true })}
-          disabled={!testo.trim() || sending}
-          title="Invia il testo ad Ana"
-        >
-          Ana
-        </button>
-
-        <button
-          style={{
-            ...styles.sendBtn,
-            ...(testo.trim() && !sending ? {} : styles.btnDisabled),
-          }}
-          onClick={() => invia()}
-          disabled={!testo.trim() || sending}
-        >
-          Invia
-        </button>
-      </div>
-    </div>
-  );
+return;
 }
+
+await inviaMessaggioNormale(t);
+
+} catch (e) {
+  console.error(e);
+  alert(
+    (forceAI ? "Errore Ana: " : "Errore invio: ") +
+      (e?.message || "sconosciuto")
+  );
+} finally {
+  setSending(false);
+}
+}
+
+useEffect(() => {
+  if (!autorizzato) return;
+
+  carica();
+
+  const seen = new Set();
+  
+
+  const channel = supabase
+    .channel("securemov-chat")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: TABLE },
+      (payload) => {
+        const m = payload.new;
+        const key =
+          m?.id ?? `${m?.created_at}-${m?.username}-${m?.testo}`;
+
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        setMsgs((prev) => [...prev, m]);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [autorizzato]);
+
+useEffect(() => {
+  bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [msgs.length]);
+
+useEffect(() => {
+  const handler = () => setUpdateAvailable(true);
+
+  window.addEventListener("pwa:update-available", handler);
+
+  return () => {
+    window.removeEventListener("pwa:update-available", handler);
+  };
+}, []);
+
 
 const styles = {
   page: {
