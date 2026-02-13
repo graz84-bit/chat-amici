@@ -38,7 +38,7 @@ export default function App() {
   // Notifiche (toast semplice)
   const [toast, setToast] = useState("");
 
-  const CHAT_TITLE = "Chat SecureMov v3";
+  const CHAT_TITLE = "Chat SecureMov";
   const myName = useMemo(() => nome.trim().toLowerCase(), [nome]);
 
   // ====== NOTIFICA (pronta per espansioni) ======
